@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Horror Chess</title>
+
+  <!-- Manifest for PWA -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Chessboard CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/chessboardjs@1.0.0/www/css/chessboard-1.0.0.min.css" />
+
+  <!-- Horror font -->
+  <link href="https://fonts.googleapis.com/css2?family=Creepster&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Creepster', cursive;
+      background: black url('assets/images/horror-background.jpg') no-repeat center center fixed;
+      background-size: cover;
+      color: red;
+      text-align: center;
+    }
+    h1 {
+      font-size: 3rem;
+      text-shadow: 2px 2px 5px black;
+    }
+    button {
+      background: darkred;
+      border: none;
+      padding: 12px 20px;
+      margin: 10px;
+      font-size: 1.2rem;
+      color: white;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: crimson;
+    }
+    #board {
+      width: 500px;
+      margin: 20px auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- MENU -->
+  <div id="menu-screen">
+    <h1>Horror Chess</h1>
+    <button onclick="startGame('2p')">Two Player</button>
+    <button onclick="startGame('ai-easy')">AI Easy</button>
+    <button onclick="startGame('ai-medium')">AI Medium</button>
+    <button onclick="startGame('ai-hard')">AI Hard</button>
+  </div>
+
+  <!-- GAME -->
+  <div id="game-screen" style="display:none;">
+    <div id="board"></div>
+    <button onclick="goToMenu()">Back to Menu</button>
+  </div>
+
+  <!-- Background Music -->
+  <audio id="bg-music" src="assets/audio/background.mp3" loop></audio>
+
+  <!-- Libraries: Chess.js + Chessboard.js + Stockfish -->
+  <script src="https://cdn.jsdelivr.net/npm/chess.js"></script>
+  <script src="https://unpkg.com/chessboardjs@1.0.0/www/js/chessboard-1.0.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/niklasf/stockfish/src/stockfish.js"></script>
+
+  <script>
+    let game;
+    let board;
+    let aiLevel = null;
+    let stockfish;
+
+    function startGame(mode) {
+      document.getElementById("menu-screen").style.display = "none";
+      document.getElementById("game-screen").style.display = "block";
+      document.getElementById("bg-music").play();
+
+      aiLevel = mode.includes("ai") ? mode.split("-")[1] : null;
+
+      game = new Chess();
+      board = Chessboard('board', {
+        draggable: true,
+        position: 'start',
+        onDrop: handleMove
+      });
+
+      if (aiLevel) {
+        stockfish = new Worker('https://cdn.jsdelivr.net/gh/niklasf/stockfish/src/stockfish.js');
+        setAIlevel(aiLevel);
+      }
+    }
+
+    function setAIlevel(level) {
+      let skillMap = { easy: 1, medium: 5, hard: 10 };
+      stockfish.postMessage('setoption name Skill Level value ' + skillMap[level]);
+    }
+
+    function handleMove(source, target) {
+      let move = game.move({ from: source, to: target, promotion: 'q' });
+
+      if (!move) return 'snapback';
+
+      playSound('move');
+      board.position(game.fen());
+
+      if (game.in_checkmate()) {
+        playSound('checkmate');
+        alert("Checkmate!");
+        goToMenu();
+        return;
+      }
+
+      if (aiLevel && !game.game_over()) {
+        setTimeout(aiMove, 300);
+      }
+    }
+
+    function aiMove() {
+      stockfish.postMessage('position fen ' + game.fen());
+      stockfish.postMessage('go movetime 500');
+
+      stockfish.onmessage = e => {
+        if (typeof e.data === 'string' && e.data.startsWith("bestmove")) {
+          let move = e.data.split(" ")[1];
+          if (move && move.length >= 4) {
+            game.move({ from: move.substring(0, 2), to: move.substring(2, 4), promotion: 'q' });
+            board.position(game.fen());
+            playSound('move');
+          }
+        }
+      };
+    }
+
+    function playSound(type) {
+      let audio = new Audio(`assets/audio/${type}.mp3`);
+      audio.play();
+    }
+
+    function goToMenu() {
+      document.getElementById("game-screen").style.display = "none";
+      document.getElementById("menu-screen").style.display = "block";
+    }
+
+    // Register service worker for PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
+</body>
+</html>
